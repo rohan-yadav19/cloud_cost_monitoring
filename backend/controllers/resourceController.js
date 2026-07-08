@@ -1,7 +1,93 @@
 import Resource from "../models/resource.js";
 import CostRecord from "../models/costRecord.js";
 import UtilizationRecord from "../models/utilizationRecord.js";
+import Notification from "../models/notification.js";
 import { seedMockData } from "../services/mockDataService.js";
+
+const OVERUSE_WARNING_THRESHOLD = 80;
+const OVERUSE_WINDOW_DAYS = 3;
+
+function getWindowStart(days) {
+  const now = new Date();
+  const start = new Date(now);
+  start.setDate(now.getDate() - days + 1);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+async function syncMockOveruseNotifications({ userId, resources, utilizationMap }) {
+  const writes = [];
+
+  resources.forEach((resource) => {
+    if (resource.type !== "EC2") {
+      return;
+    }
+
+    const avgCpuPercent = utilizationMap[resource.resourceId];
+    if (avgCpuPercent == null) {
+      return;
+    }
+
+    const exceedsLimit =
+      resource.capacityLimit != null && avgCpuPercent > resource.capacityLimit;
+    const exceedsWarning = avgCpuPercent > OVERUSE_WARNING_THRESHOLD;
+
+    if (exceedsLimit || exceedsWarning) {
+      const severity = exceedsLimit ? "critical" : "warning";
+      const thresholdValue = exceedsLimit
+        ? resource.capacityLimit
+        : OVERUSE_WARNING_THRESHOLD;
+
+      writes.push({
+        updateOne: {
+          filter: {
+            userId,
+            resourceId: resource.resourceId,
+            type: "resource_overuse",
+            status: "active",
+          },
+          update: {
+            $set: {
+              severity,
+              title: exceedsLimit ? "Capacity exceeded" : "High utilization",
+              message: exceedsLimit
+                ? `Mock CPU usage is ${avgCpuPercent}% which is above the resource limit (${resource.capacityLimit}%).`
+                : `Mock CPU usage is ${avgCpuPercent}% which is above the warning threshold (${OVERUSE_WARNING_THRESHOLD}%).`,
+              currentUsage: avgCpuPercent,
+              thresholdValue,
+              resolvedAt: null,
+            },
+            $setOnInsert: {
+              isRead: false,
+            },
+          },
+          upsert: true,
+        },
+      });
+    } else {
+      writes.push({
+        updateOne: {
+          filter: {
+            userId,
+            resourceId: resource.resourceId,
+            type: "resource_overuse",
+            status: "active",
+          },
+          update: {
+            $set: {
+              status: "resolved",
+              resolvedAt: new Date(),
+            },
+          },
+        },
+      });
+    }
+  });
+
+  if (writes.length) {
+    await Notification.bulkWrite(writes, { ordered: false });
+  }
+}
 
 export const getResources = async (req, res) => {
   try {
@@ -9,6 +95,8 @@ export const getResources = async (req, res) => {
 
     const resources = await Resource.find().sort({ launchDate: -1 }).lean();
     const resourceIds = resources.map((item) => item.resourceId);
+    const windowStart = getWindowStart(OVERUSE_WINDOW_DAYS);
+    const now = new Date();
 
     const [costAgg, utilizationAgg] = await Promise.all([
       CostRecord.aggregate([
@@ -21,7 +109,12 @@ export const getResources = async (req, res) => {
         },
       ]),
       UtilizationRecord.aggregate([
-        { $match: { resourceId: { $in: resourceIds } } },
+        {
+          $match: {
+            resourceId: { $in: resourceIds },
+            date: { $gte: windowStart, $lte: now },
+          },
+        },
         {
           $group: {
             _id: "$resourceId",
@@ -37,6 +130,12 @@ export const getResources = async (req, res) => {
     const utilizationMap = Object.fromEntries(
       utilizationAgg.map((item) => [item._id, Number(item.avgCpuPercent.toFixed(2))]),
     );
+
+    await syncMockOveruseNotifications({
+      userId: req.user._id,
+      resources,
+      utilizationMap,
+    });
 
     const enriched = resources.map((resource) => ({
       ...resource,

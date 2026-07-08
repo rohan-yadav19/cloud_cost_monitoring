@@ -25,6 +25,12 @@ const resourceSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    capacityLimit: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: null,
+    },
   },
   { timestamps: true },
 );

@@ -21,6 +21,7 @@ function buildResources() {
       region: pick(REGIONS),
       status: "running",
       launchDate: new Date(now.getTime() - (60 + i * 3) * 24 * 60 * 60 * 1000),
+      capacityLimit: i === 3 ? 90 : 80,
     });
   }
 
@@ -76,6 +77,7 @@ function buildUtilizationRecords(resources) {
   const now = new Date();
   const records = [];
   const lowCpuResourceIds = new Set(["i-0ec20001", "i-0ec20002"]);
+  const highCpuResourceIds = new Set(["i-0ec20003"]);
 
   resources
     .filter((resource) => resource.type === "EC2")
@@ -85,7 +87,11 @@ function buildUtilizationRecords(resources) {
         date.setDate(now.getDate() - i);
         date.setHours(0, 0, 0, 0);
 
-        const range = lowCpuResourceIds.has(resource.resourceId) ? [1, 4.2] : [12, 78];
+        const range = lowCpuResourceIds.has(resource.resourceId)
+          ? [1, 4.2]
+          : highCpuResourceIds.has(resource.resourceId)
+            ? [88, 97]
+            : [12, 78];
 
         records.push({
           resourceId: resource.resourceId,

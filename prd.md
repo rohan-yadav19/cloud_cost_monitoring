@@ -21,11 +21,12 @@ Build a minimal, demo-ready dashboard that monitors AWS resource usage and cost,
 | G1 | Display a list of AWS resources (EC2, EBS, S3) with basic metadata |
 | G2 | Show cost per resource and total spend over time |
 | G3 | Show CPU/utilization metrics per resource |
-| G4 | Flag idle/underutilized resources using a simple threshold rule |
-| G5 | Generate basic optimization recommendations (rule-based, not ML) |
+| G4 | Flag idle/underutilized and overutilized resources using simple threshold rules |
+| G5 | Generate basic optimization recommendations (rule-based, not ML), including scale-out suggestions for overloaded resources |
 | G6 | Let user set a monthly budget and trigger an alert when exceeded |
-| G7 | Export a basic cost report as CSV |
-| G8 | Work fully on mock data; optionally connect to real AWS SDK |
+| G7 | Trigger in-app alerts/notifications when a resource is using more capacity than its defined threshold |
+| G8 | Export a basic cost report as CSV |
+| G9 | Work fully on mock data; optionally connect to real AWS SDK |
 
 ## 3. Non-Goals (Out of Scope for this version)
 
@@ -35,6 +36,7 @@ Build a minimal, demo-ready dashboard that monitors AWS resource usage and cost,
 - Role-based access control / multi-tenant org support
 - Payment/billing integration
 - Mobile app
+- Automatic AWS remediation actions such as actually resizing or scaling resources
 
 ---
 
@@ -78,6 +80,7 @@ A single environment variable, `DATA_SOURCE=mock|aws`, decides which implementat
 ### 5.4 Utilization Monitoring
 - CPU utilization % per EC2 resource, daily granularity
 - Simple table or sparkline chart per resource
+- For MVP, each resource can also expose a simple `capacityLimit` or threshold reference in mock data so the system can determine when usage is above a safe limit
 
 ### 5.5 Idle Resource Detection
 Rule-based, computed on read (no cron needed for MVP, but a scheduled job is a stretch goal):
@@ -87,18 +90,40 @@ Rule-based, computed on read (no cron needed for MVP, but a scheduled job is a s
 | Avg CPU < 5% over last 7 days | "Idle — consider stopping" |
 | EBS volume with `status: unattached` | "Unused volume — consider deleting" |
 
-### 5.6 Recommendations
-- Auto-generated from the rules in 5.5, stored in a `Recommendations` collection
-- Displayed as a list: resource, issue, suggested action, estimated monthly savings (simple % of current cost, hardcoded assumption e.g. 30%)
+### 5.6 Overutilization Detection & Resource Alerts
+Rule-based, computed on read alongside idle checks:
+
+| Condition | Flag / Alert |
+|---|---|
+| Avg CPU > 80% over last 3 days for an EC2 instance | "High utilization — scale out recommended" |
+| Current usage exceeds configured `capacityLimit` for a resource | "Capacity exceeded — immediate attention required" |
+| Resource remains above threshold for 2+ consecutive checks | Create persistent in-app notification until acknowledged or usage returns to normal |
+
+- When a resource is used more than its safe threshold/capacity, the backend must create an in-app alert/notification entry
+- Notifications should include: resource name/id, resource type, current usage, allowed threshold, severity, and recommended next action
+- MVP notification channels: in-app dashboard banner plus notification list/panel
+- Alert severity should be simple and rule-based:
+  - `warning` when usage is above 80% but below the hard limit
+  - `critical` when usage exceeds the configured `capacityLimit`
+- A newly overused resource should create a new unread notification the first time the threshold is crossed
+- If the same resource remains overused, the notification stays active instead of creating unlimited duplicates on every refresh
+- Once usage returns below the threshold, the alert can be marked as cleared/resolved by the system
+- Email/SMS/Slack notifications are out of scope for MVP
+
+### 5.7 Recommendations
+- Auto-generated from the rules in 5.5 and 5.6, stored in a `Recommendations` collection
+- Displayed as a list: resource, issue, suggested action, estimated monthly savings or expected stability improvement
+- For overloaded resources, recommendation must explicitly suggest scaling out that specific resource (for example: "Scale out EC2 instance group serving resource X")
+- Cost-saving recommendations can continue using a hardcoded assumption (e.g. 30% savings), while overutilization recommendations may instead show a simple impact label such as `avoids throttling` or `improves availability`
 - User can mark a recommendation as "Resolved" (no real action taken on AWS)
 
-### 5.7 Budget Alerts
+### 5.8 Budget Alerts
 - User sets one monthly budget value in Settings
 - On dashboard load, backend compares total spend vs budget
 - If exceeded, show an in-app banner/notification
 - Email alert is a **stretch goal**, not required for MVP
 
-### 5.8 Reports
+### 5.9 Reports
 - One button: "Export CSV" → downloads current cost + recommendation data
 - PDF export is a stretch goal, not required for MVP
 
@@ -113,7 +138,7 @@ Rule-based, computed on read (no cron needed for MVP, but a scheduled job is a s
 
 **Resources**
 ```
-{ _id, userId, resourceId, type, region, status, launchDate }
+{ _id, userId, resourceId, type, region, status, launchDate, capacityLimit }
 ```
 
 **CostRecords**
@@ -123,12 +148,17 @@ Rule-based, computed on read (no cron needed for MVP, but a scheduled job is a s
 
 **UtilizationRecords**
 ```
-{ _id, resourceId, date, cpuPercent }
+{ _id, resourceId, date, cpuPercent, usagePercent }
 ```
 
 **Recommendations**
 ```
 { _id, resourceId, issueType, message, estimatedSavings, status, createdAt }
+```
+
+**Notifications**
+```
+{ _id, userId, resourceId, type, severity, title, message, currentUsage, thresholdValue, status, isRead, createdAt, resolvedAt }
 ```
 
 ---
@@ -151,6 +181,10 @@ GET    /api/utilization/:resourceId
 GET    /api/recommendations
 PATCH  /api/recommendations/:id    → mark resolved
 
+GET    /api/notifications
+PATCH  /api/notifications/:id      → mark read / acknowledged
+GET    /api/alerts/active          → active overused-resource alerts
+
 GET    /api/budget
 PUT    /api/budget
 
@@ -162,10 +196,12 @@ GET    /api/reports/export         → CSV download
 ## 8. Frontend Pages (Minimal Set)
 
 1. **Login / Signup**
-2. **Dashboard** — total spend, trend chart, cost-by-type chart, budget status banner
-3. **Resources** — table of all resources with utilization + cost column
-4. **Recommendations** — list of flagged resources with suggested action
+2. **Dashboard** — total spend, trend chart, cost-by-type chart, budget status banner, overutilization alert banner, recent notifications panel
+3. **Resources** — table of all resources with utilization, threshold status, alert severity, and cost column
+4. **Recommendations** — list of flagged resources with suggested action, including scale-out advice for overloaded resources
 5. **Settings** — set monthly budget
+
+A lightweight notifications drawer/panel can be included inside the Dashboard rather than as a separate page to keep MVP scope small.
 
 That's 5 pages total. No extra screens needed for MVP.
 
@@ -177,6 +213,7 @@ A standalone seed script (`backend/scripts/seedMockData.js`) that:
 - Creates ~15–20 fake AWS resources (mix of EC2, EBS, S3)
 - Generates 30 days of cost history per resource (randomized but realistic ranges, e.g. EC2 $0.50–$5/day)
 - Generates 30 days of CPU utilization per EC2 resource (some intentionally low, e.g. 1–4%, to trigger idle detection)
+- Generates a few intentionally overutilized resources (e.g. 85–95% CPU or usage above `capacityLimit`) to trigger alerts and scale-out recommendations
 - Marks 2–3 EBS volumes as `unattached` to trigger recommendations
 
 Run once via `npm run seed`, populates MongoDB, and the whole dashboard works immediately — no AWS account required.
@@ -189,7 +226,9 @@ Run once via `npm run seed`, populates MongoDB, and the whole dashboard works im
 - [ ] Dashboard shows total spend + trend chart from mock data
 - [ ] Resource list shows utilization and cost per resource
 - [ ] At least 2 resources are correctly flagged as idle/unattached
-- [ ] Recommendations page lists flagged resources with estimated savings
+- [ ] At least 1 resource is correctly flagged as overutilized / capacity exceeded
+- [ ] Recommendations page lists flagged resources with estimated savings or scale-out guidance
+- [ ] Overutilized resources create visible in-app notifications
 - [ ] Setting a budget below current spend triggers a visible alert
 - [ ] CSV export downloads a working file
 - [ ] Entire app runs with `DATA_SOURCE=mock` and zero AWS credentials
@@ -200,9 +239,10 @@ Run once via `npm run seed`, populates MongoDB, and the whole dashboard works im
 
 1. Real AWS Cost Explorer + CloudWatch integration behind `DATA_SOURCE=aws`
 2. Email alerts via Nodemailer when budget exceeded
-3. PDF report export
-4. node-cron scheduled recommendation refresh instead of on-read computation
-5. Multi-provider support (Azure/GCP) using the same provider-interface pattern
+3. Email/Slack alerts for overutilized or capacity-exceeded resources
+4. PDF report export
+5. node-cron scheduled recommendation refresh instead of on-read computation
+6. Multi-provider support (Azure/GCP) using the same provider-interface pattern
 
 ---
 
@@ -211,9 +251,9 @@ Run once via `npm run seed`, populates MongoDB, and the whole dashboard works im
 1. Backend scaffold + MongoDB models + JWT auth
 2. Mock data simulator + seed script
 3. Cost & resource & utilization API endpoints (mock provider only)
-4. Recommendation rule engine (computed on API read)
+4. Recommendation + notification rule engine (computed on API read)
 5. React app: auth pages + protected routing
-6. Dashboard page with charts (Recharts)
+6. Dashboard page with charts (Recharts) + alert/notification UI
 7. Resources page + Recommendations page
 8. Budget setting + alert banner
 9. CSV export
