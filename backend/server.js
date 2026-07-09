@@ -5,16 +5,19 @@ import connectDB from "./config/db.js";
 // Load environment variables
 dotenv.config();
 
-// Connect to MongoDB
-connectDB();
-
-// Define Port
 const PORT = process.env.PORT || 5000;
 
-// Start Server
-app.listen(PORT, () => {
-  console.log("==================================");
-  console.log(`🚀 Server is running on Port ${PORT}`);
-  console.log(`🌍 http://localhost:${PORT}`);
-  console.log("==================================");
+async function startServer() {
+  await connectDB();
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Server is running on Port ${PORT}`);
+    console.log(`🌍 http://localhost:${PORT}`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error("❌ Failed to start server");
+  console.error(error.message);
+  process.exit(1);
 });
