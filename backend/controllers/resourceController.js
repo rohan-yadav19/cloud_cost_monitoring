@@ -51,8 +51,9 @@ async function syncMockOveruseNotifications({ userId, resources, utilizationMap 
               severity,
               title: exceedsLimit ? "Capacity exceeded" : "High utilization",
               message: exceedsLimit
-                ? `Mock CPU usage is ${avgCpuPercent}% which is above the resource limit (${resource.capacityLimit}%).`
-                : `Mock CPU usage is ${avgCpuPercent}% which is above the warning threshold (${OVERUSE_WARNING_THRESHOLD}%).`,
+                ? `CPU usage is ${avgCpuPercent}% which is above the resource limit (${resource.capacityLimit}%).`
+                : `CPU usage is ${avgCpuPercent}% which is above the warning threshold (${OVERUSE_WARNING_THRESHOLD}%).`,
+              recommendedAction: "Scale up",
               currentUsage: avgCpuPercent,
               thresholdValue,
               resolvedAt: null,

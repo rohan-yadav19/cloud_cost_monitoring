@@ -15,6 +15,12 @@ import {
 } from "recharts";
 import { cloudApi } from "../api/api";
 import { useAuth } from "../context/AuthContext";
+import {
+  actionColor,
+  groupRecommendations,
+  suggestionForResource,
+  summarizeRecommendations,
+} from "../utils/recommendations";
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -33,6 +39,12 @@ export default function Dashboard() {
   const [resources, setResources] = useState([]);
   const [summary, setSummary] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
+  const [recommendationSummary, setRecommendationSummary] = useState({
+    scaleDown: 0,
+    terminate: 0,
+    scaleUp: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -55,10 +67,12 @@ export default function Dashboard() {
       try {
         setLoading(true);
         setError("");
-        const [resourcesData, summaryData, notificationsData] = await Promise.all([
+        const [resourcesData, summaryData, notificationsData, recommendationsData] =
+          await Promise.all([
           cloudApi.getResources(),
           cloudApi.getCostSummary(),
           cloudApi.getNotifications(),
+          cloudApi.getRecommendations(),
         ]);
 
         if (!active) return;
@@ -66,6 +80,12 @@ export default function Dashboard() {
         setResources(resourcesData.resources || []);
         setSummary(summaryData.summary || null);
         setNotifications(notificationsData.notifications || []);
+
+        const recs = recommendationsData.recommendations || [];
+        setRecommendations(recs);
+        setRecommendationSummary(
+          recommendationsData.summary || summarizeRecommendations(recs),
+        );
       } catch (err) {
         if (!active) return;
         setError(err.message || "Failed to load dashboard data.");
@@ -93,6 +113,13 @@ export default function Dashboard() {
     [overuseNotifications],
   );
 
+  const recommendationByResourceId = useMemo(() => {
+    const grouped = groupRecommendations(recommendations);
+    const merged = [...grouped.costOptimization, ...grouped.scaleUp];
+
+    return Object.fromEntries(merged.map((rec) => [rec.resourceId, rec]));
+  }, [recommendations]);
+
   const handleMarkRead = async (id) => {
     try {
       await cloudApi.markNotificationRead(id);
@@ -114,7 +141,7 @@ export default function Dashboard() {
       {
         label: "Monthly Spend",
         value: currency.format(summary?.totalMonthlySpend || 0),
-        change: "Mock AWS seed data",
+        change: "Last 30 days",
         icon: "💰",
       },
       {
@@ -197,7 +224,7 @@ export default function Dashboard() {
             Welcome back, {user?.name?.split(" ")[0]}
           </h1>
           <p className="mt-1 text-slate-500">
-            Here&apos;s your cloud cost monitoring overview from mock seeded AWS data
+            Here&apos;s your cloud cost monitoring overview for your AWS environment
           </p>
         </div>
 
@@ -217,13 +244,39 @@ export default function Dashboard() {
           >
             <p className="text-sm font-semibold text-slate-900">
               {criticalAlerts.length > 0
-                ? `${criticalAlerts.length} critical mock alert${criticalAlerts.length > 1 ? "s" : ""} detected`
-                : `${overuseNotifications.length} mock overuse alert${overuseNotifications.length > 1 ? "s" : ""} detected`}
+                ? `${criticalAlerts.length} critical alert${criticalAlerts.length > 1 ? "s" : ""} detected`
+                : `${overuseNotifications.length} high utilization alert${overuseNotifications.length > 1 ? "s" : ""} detected`}
             </p>
             <p className="mt-1 text-sm text-slate-600">
-              These alerts are generated from seeded mock utilization data. No
-              real cloud metrics are required.
+              Review affected resources and consider scaling out to maintain
+              performance and availability.
             </p>
+          </div>
+        )}
+
+        {!loading && (
+          <div className="mb-8 grid gap-4 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-sm font-medium text-slate-500">Scale down</p>
+              <p className="mt-2 text-2xl font-bold text-slate-900">
+                {recommendationSummary.scaleDown}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">Idle EC2 instances</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-sm font-medium text-slate-500">Terminate</p>
+              <p className="mt-2 text-2xl font-bold text-slate-900">
+                {recommendationSummary.terminate}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">Unused EBS volumes</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-sm font-medium text-slate-500">Scale up</p>
+              <p className="mt-2 text-2xl font-bold text-slate-900">
+                {recommendationSummary.scaleUp}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">Overutilized EC2 instances</p>
+            </div>
           </div>
         )}
 
@@ -316,9 +369,9 @@ export default function Dashboard() {
             <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Mock Alerts</h2>
+                  <h2 className="text-lg font-semibold text-slate-900">Alerts</h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Overused resources from seeded utilization data
+                    Resources exceeding utilization thresholds
                   </p>
                 </div>
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
@@ -351,6 +404,9 @@ export default function Dashboard() {
                           <p className="mt-1 text-xs text-slate-600">
                             {notification.message}
                           </p>
+                          <p className="mt-1 text-xs font-medium text-emerald-700">
+                            Recommended action: {notification.recommendedAction || "Scale up"}
+                          </p>
                         </div>
                         <button
                           type="button"
@@ -368,7 +424,7 @@ export default function Dashboard() {
                   ))
                 ) : (
                   <div className="text-sm text-slate-500">
-                    No active mock alerts right now.
+                    No active alerts right now.
                   </div>
                 )}
               </div>
@@ -380,7 +436,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">
-                AWS Resources (Mock Seed)
+                AWS Resources
               </h2>
               <p className="mt-1 text-sm text-slate-500">
                 EC2, EBS and S3 inventory with monthly cost and utilization.
@@ -409,12 +465,13 @@ export default function Dashboard() {
                   <th className="px-3 py-2 text-right font-medium text-slate-500">30d Cost</th>
                   <th className="px-3 py-2 text-right font-medium text-slate-500">Avg CPU</th>
                   <th className="px-3 py-2 text-right font-medium text-slate-500">Usage</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500">Suggestion</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td className="px-3 py-4 text-slate-500" colSpan={7}>
+                    <td className="px-3 py-4 text-slate-500" colSpan={8}>
                       Loading resources...
                     </td>
                   </tr>
@@ -465,12 +522,31 @@ export default function Dashboard() {
                           </span>
                         )}
                       </td>
+                      <td className="px-3 py-2 text-left">
+                        {(() => {
+                          const suggestion =
+                            recommendationByResourceId[resource.resourceId]
+                              ?.suggestedAction ?? suggestionForResource(resource);
+
+                          return suggestion ? (
+                            <span
+                              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${actionColor(
+                                suggestion,
+                              )}`}
+                            >
+                              {suggestion}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          );
+                        })()}
+                      </td>
                     </tr>
                   ))
                 )}
                 {!loading && resources.length === 0 && (
                   <tr>
-                    <td className="px-3 py-4 text-slate-500" colSpan={7}>
+                    <td className="px-3 py-4 text-slate-500" colSpan={8}>
                       No resources found.
                     </td>
                   </tr>

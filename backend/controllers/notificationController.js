@@ -19,6 +19,7 @@ export const getNotifications = async (req, res) => {
         severity: notification.severity,
         title: notification.title,
         message: notification.message,
+        recommendedAction: notification.recommendedAction || "Scale up",
         currentUsage: notification.currentUsage,
         thresholdValue: notification.thresholdValue,
         isRead: notification.isRead,

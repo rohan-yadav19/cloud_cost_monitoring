@@ -40,6 +40,11 @@ const notificationSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    recommendedAction: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     currentUsage: {
       type: Number,
       min: 0,

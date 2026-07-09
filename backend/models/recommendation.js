@@ -9,7 +9,12 @@ const recommendationSchema = new mongoose.Schema(
     },
     issueType: {
       type: String,
-      enum: ["idle_ec2", "unused_ebs"],
+      enum: ["idle_ec2", "unused_ebs", "overused_ec2"],
+      required: true,
+    },
+    suggestedAction: {
+      type: String,
+      enum: ["Scale down", "Terminate", "Scale up", "Review"],
       required: true,
     },
     message: {
