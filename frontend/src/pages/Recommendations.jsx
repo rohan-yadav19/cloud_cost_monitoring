@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { cloudApi } from "../api/api";
+import RecommendationActionModal from "../components/RecommendationActionModal";
 import { useAuth } from "../context/AuthContext";
 import {
   actionColor,
@@ -18,7 +19,7 @@ const currency = new Intl.NumberFormat("en-US", {
   currency: "USD",
 });
 
-function RecommendationTable({ items, emptyMessage }) {
+function RecommendationTable({ items, emptyMessage, onTagClick, clickable = true }) {
   return (
     <div className="mt-2 overflow-x-auto">
       <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -55,40 +56,131 @@ function RecommendationTable({ items, emptyMessage }) {
               </td>
             </tr>
           ) : (
-            items.map((rec) => (
-              <tr key={rec.id}>
-                <td className="px-3 py-2 text-slate-800">{rec.resourceId}</td>
-                <td className="px-3 py-2 text-slate-600">{rec.type}</td>
-                <td className="px-3 py-2 text-slate-600">{rec.region}</td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badgeColor(
-                      rec.issueType,
-                    )}`}
-                  >
-                    {rec.issueLabel || issueLabel(rec.issueType)}
-                  </span>
-                  <div className="mt-1 text-xs text-slate-600">{rec.message}</div>
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${actionColor(
-                      suggestedActionFor(rec),
-                    )}`}
-                  >
-                    {suggestedActionFor(rec)}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right text-slate-800">
-                  {impactLabel(rec, currency)}
-                </td>
-                <td className="px-3 py-2 text-slate-600">
-                  {rec.createdAt
-                    ? new Date(rec.createdAt).toLocaleDateString()
-                    : "-"}
-                </td>
-              </tr>
-            ))
+            items.map((rec) => {
+              const action = suggestedActionFor(rec);
+
+              return (
+                <tr key={rec.id}>
+                  <td className="px-3 py-2 text-slate-800">{rec.resourceId}</td>
+                  <td className="px-3 py-2 text-slate-600">{rec.type}</td>
+                  <td className="px-3 py-2 text-slate-600">{rec.region}</td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badgeColor(
+                        rec.issueType,
+                      )}`}
+                    >
+                      {rec.issueLabel || issueLabel(rec.issueType)}
+                    </span>
+                    <div className="mt-1 text-xs text-slate-600">{rec.message}</div>
+                  </td>
+                  <td className="px-3 py-2">
+                    {clickable && onTagClick ? (
+                      <button
+                        type="button"
+                        onClick={() => onTagClick(rec)}
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition hover:ring-2 hover:ring-offset-1 ${actionColor(
+                          action,
+                        )} ${
+                          action === "Scale down"
+                            ? "hover:ring-indigo-300"
+                            : action === "Scale up"
+                              ? "hover:ring-emerald-300"
+                              : action === "Terminate"
+                                ? "hover:ring-rose-300"
+                                : "hover:ring-slate-300"
+                        }`}
+                      >
+                        {action}
+                      </button>
+                    ) : (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${actionColor(
+                          action,
+                        )}`}
+                      >
+                        {action}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-800">
+                    {impactLabel(rec, currency)}
+                  </td>
+                  <td className="px-3 py-2 text-slate-600">
+                    {rec.createdAt
+                      ? new Date(rec.createdAt).toLocaleDateString()
+                      : "-"}
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AppliedChangesTable({ items, emptyMessage }) {
+  return (
+    <div className="mt-2 overflow-x-auto">
+      <table className="min-w-full divide-y divide-slate-200 text-sm">
+        <thead className="bg-slate-50">
+          <tr>
+            <th className="px-3 py-2 text-left font-medium text-slate-500">
+              Resource
+            </th>
+            <th className="px-3 py-2 text-left font-medium text-slate-500">
+              Action
+            </th>
+            <th className="px-3 py-2 text-left font-medium text-slate-500">
+              Change Summary
+            </th>
+            <th className="px-3 py-2 text-right font-medium text-slate-500">
+              Est. Impact
+            </th>
+            <th className="px-3 py-2 text-left font-medium text-slate-500">
+              Applied
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {items.length === 0 ? (
+            <tr>
+              <td className="px-3 py-4 text-slate-500" colSpan={5}>
+                {emptyMessage}
+              </td>
+            </tr>
+          ) : (
+            items.map((rec) => {
+              const action = suggestedActionFor(rec);
+
+              return (
+                <tr key={rec.id}>
+                  <td className="px-3 py-2 text-slate-800">{rec.resourceId}</td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${actionColor(
+                        action,
+                      )}`}
+                    >
+                      {action}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-slate-700">
+                    {rec.changeSummary || rec.message}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-800">
+                    {impactLabel(rec, currency)}
+                  </td>
+                  <td className="px-3 py-2 text-slate-600">
+                    {rec.resolvedAt
+                      ? new Date(rec.resolvedAt).toLocaleDateString()
+                      : "-"}
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>
@@ -100,6 +192,7 @@ export default function Recommendations() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
+  const [appliedItems, setAppliedItems] = useState([]);
   const [summary, setSummary] = useState({
     scaleDown: 0,
     terminate: 0,
@@ -108,6 +201,22 @@ export default function Recommendations() {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const [selectedRec, setSelectedRec] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState("");
+  const [applying, setApplying] = useState(false);
+
+  const loadRecommendations = useCallback(async () => {
+    const data = await cloudApi.getRecommendations();
+    const recs = data.recommendations || [];
+    setItems(recs);
+    setAppliedItems(data.appliedRecommendations || []);
+    setSummary(data.summary || summarizeRecommendations(recs));
+    return data;
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -116,12 +225,7 @@ export default function Recommendations() {
       try {
         setLoading(true);
         setError("");
-        const data = await cloudApi.getRecommendations();
-        if (!active) return;
-
-        const recs = data.recommendations || [];
-        setItems(recs);
-        setSummary(data.summary || summarizeRecommendations(recs));
+        await loadRecommendations();
       } catch (err) {
         if (!active) return;
         setError(err.message || "Failed to load recommendations.");
@@ -135,12 +239,57 @@ export default function Recommendations() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [loadRecommendations]);
 
   const { scaleUp, costOptimization } = useMemo(
     () => groupRecommendations(items),
     [items],
   );
+
+  const handleTagClick = async (rec) => {
+    setSelectedRec(rec);
+    setPreview(null);
+    setModalError("");
+    setModalLoading(true);
+
+    try {
+      const data = await cloudApi.previewRecommendation(rec.id);
+      setPreview(data.preview);
+    } catch (err) {
+      setModalError(err.message || "Failed to load preview.");
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleCloseModal = () => {
+    if (applying) return;
+    setSelectedRec(null);
+    setPreview(null);
+    setModalError("");
+    setModalLoading(false);
+  };
+
+  const handleApprove = async () => {
+    if (!selectedRec) return;
+
+    try {
+      setApplying(true);
+      setModalError("");
+      const data = await cloudApi.applyRecommendation(selectedRec.id);
+      const summaryText = data.change?.summary || "Change applied successfully.";
+      setSuccessMessage(`${selectedRec.resourceId}: ${summaryText}`);
+      setSelectedRec(null);
+      setPreview(null);
+      setModalError("");
+      setModalLoading(false);
+      await loadRecommendations();
+    } catch (err) {
+      setModalError(err.message || "Failed to apply recommendation.");
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const handleDownloadReport = async () => {
     try {
@@ -258,6 +407,27 @@ export default function Recommendations() {
           </div>
         )}
 
+        {successMessage && (
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <span>{successMessage}</span>
+            <button
+              type="button"
+              onClick={() => setSuccessMessage("")}
+              className="shrink-0 text-emerald-600 hover:text-emerald-800"
+              aria-label="Dismiss"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {!loading && (
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -306,6 +476,7 @@ export default function Recommendations() {
               <RecommendationTable
                 items={scaleUp}
                 emptyMessage="No scale-up recommendations right now."
+                onTagClick={handleTagClick}
               />
             )}
           </div>
@@ -331,11 +502,47 @@ export default function Recommendations() {
               <RecommendationTable
                 items={costOptimization}
                 emptyMessage="No cost optimization recommendations right now."
+                onTagClick={handleTagClick}
+              />
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-3 flex items-center justify-between text-sm">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Applied Changes
+                </h2>
+                <p className="mt-1 text-slate-500">
+                  Resources that were scaled or terminated from approved recommendations
+                </p>
+              </div>
+              <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
+                {loading ? "..." : appliedItems.length}
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="text-sm text-slate-500">Loading applied changes...</div>
+            ) : (
+              <AppliedChangesTable
+                items={appliedItems}
+                emptyMessage="No changes applied yet. Click a suggestion tag to review and approve."
               />
             )}
           </div>
         </div>
       </main>
+
+      <RecommendationActionModal
+        open={Boolean(selectedRec)}
+        preview={preview}
+        loading={modalLoading}
+        applying={applying}
+        error={modalError}
+        onClose={handleCloseModal}
+        onApprove={handleApprove}
+      />
     </div>
   );
 }

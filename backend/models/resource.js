@@ -31,6 +31,16 @@ const resourceSchema = new mongoose.Schema(
       max: 100,
       default: null,
     },
+    instanceType: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    volumeSizeGb: {
+      type: Number,
+      min: 1,
+      default: null,
+    },
   },
   { timestamps: true },
 );

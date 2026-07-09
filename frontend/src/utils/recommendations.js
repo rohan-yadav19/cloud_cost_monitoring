@@ -81,3 +81,66 @@ export function impactLabel(rec, currency) {
   }
   return currency.format(rec.estimatedSavings || 0);
 }
+
+export function approveButtonLabel(action) {
+  if (action === "Scale down") return "Approve scale down";
+  if (action === "Scale up") return "Approve scale up";
+  if (action === "Terminate") return "Approve terminate";
+  return "Approve";
+}
+
+function configsEqual(a, b) {
+  if (!a || !b) return false;
+  return (
+    a.instanceType === b.instanceType &&
+    a.status === b.status &&
+    a.volumeSizeGb === b.volumeSizeGb &&
+    a.monthlyCost === b.monthlyCost
+  );
+}
+
+export function hasEffectiveChange(preview) {
+  if (!preview?.currentConfig || !preview?.recommendedConfig) return false;
+  return !configsEqual(preview.currentConfig, preview.recommendedConfig);
+}
+
+export function noChangeReason(preview) {
+  const action = preview?.action;
+  if (action === "Scale down") return "Already at minimum instance size.";
+  if (action === "Scale up") return "Already at maximum instance size.";
+  return "No change available for this resource.";
+}
+
+export function formatConfigChange(preview, currency) {
+  if (!preview?.currentConfig || !preview?.recommendedConfig) return [];
+
+  const { action, currentConfig, recommendedConfig } = preview;
+  const lines = [];
+
+  if (action === "Terminate") {
+    lines.push({
+      label: "Status",
+      before: currentConfig.status,
+      after: recommendedConfig.status,
+    });
+  } else if (action === "Scale down" || action === "Scale up") {
+    lines.push({
+      label: "Instance type",
+      before: currentConfig.instanceType || "—",
+      after: recommendedConfig.instanceType || "—",
+    });
+  }
+
+  if (currentConfig.monthlyCost != null && recommendedConfig.monthlyCost != null) {
+    const delta = recommendedConfig.monthlyCost - currentConfig.monthlyCost;
+    lines.push({
+      label: "Monthly cost",
+      before: currency.format(currentConfig.monthlyCost),
+      after: currency.format(recommendedConfig.monthlyCost),
+      delta: delta !== 0 ? currency.format(Math.abs(delta)) : null,
+      deltaDirection: delta < 0 ? "savings" : delta > 0 ? "increase" : null,
+    });
+  }
+
+  return lines;
+}

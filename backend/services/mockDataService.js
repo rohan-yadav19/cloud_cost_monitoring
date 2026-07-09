@@ -10,6 +10,8 @@ const randomBetween = (min, max) =>
 
 const pick = (values) => values[Math.floor(Math.random() * values.length)];
 
+const EC2_INSTANCE_TYPES = ["t3.small", "t3.medium", "t3.large", "t3.xlarge"];
+
 function buildResources() {
   const resources = [];
   const now = new Date();
@@ -22,6 +24,7 @@ function buildResources() {
       status: "running",
       launchDate: new Date(now.getTime() - (60 + i * 3) * 24 * 60 * 60 * 1000),
       capacityLimit: i === 3 ? 90 : 80,
+      instanceType: i === 3 ? "t3.large" : EC2_INSTANCE_TYPES[i % EC2_INSTANCE_TYPES.length],
     });
   }
 
@@ -32,6 +35,7 @@ function buildResources() {
       region: pick(REGIONS),
       status: i <= 3 ? "unattached" : "in-use",
       launchDate: new Date(now.getTime() - (40 + i * 5) * 24 * 60 * 60 * 1000),
+      volumeSizeGb: 50 + i * 20,
     });
   }
 

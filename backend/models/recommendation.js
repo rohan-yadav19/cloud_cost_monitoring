@@ -31,6 +31,15 @@ const recommendationSchema = new mongoose.Schema(
       enum: ["open", "resolved"],
       default: "open",
     },
+    resolvedAt: {
+      type: Date,
+      default: null,
+    },
+    appliedChangeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ResourceChange",
+      default: null,
+    },
   },
   { timestamps: true },
 );

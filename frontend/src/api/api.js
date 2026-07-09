@@ -42,6 +42,9 @@ export const cloudApi = {
   getResources: () => request("/resources"),
   getCostSummary: () => request("/costs/summary"),
   getRecommendations: () => request("/recommendations"),
+  previewRecommendation: (id) => request(`/recommendations/${id}/preview`),
+  applyRecommendation: (id) =>
+    request(`/recommendations/${id}/apply`, { method: "POST" }),
   getNotifications: () => request("/notifications"),
   markNotificationRead: (id) =>
     request(`/notifications/${id}`, { method: "PATCH" }),
